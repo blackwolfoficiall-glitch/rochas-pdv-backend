@@ -1,0 +1,1 @@
+function handleWebhook(p){return p;} module.exports={handleWebhook};
