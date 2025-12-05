@@ -3,28 +3,30 @@ const bodyParser = require("body-parser");
 const cors = require("cors");
 const fetch = require("node-fetch");
 
+const MP_TOKEN = process.env.MP_ACCESS_TOKEN || null;
+const PORT = process.env.PORT || 3000;
+
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());
 
-const PORT = process.env.PORT || 3000;
-const MP_TOKEN = process.env.MP_ACCESS_TOKEN;
-
-if (!MP_TOKEN) {
-  console.log("⚠️ MP_ACCESS_TOKEN não configurado no Render!");
-}
-
 app.get("/", (req, res) => {
-  res.send("Backend OK");
+  res.send("Backend OK — PDV Rochas Açaí");
 });
 
+/* ===========================
+   PAGAMENTO PIX / CARTÃO
+=========================== */
 app.post("/create_payment", async (req, res) => {
   try {
-    const method = (req.query.method || "").toLowerCase();
+    const method = req.query.method;
     const { amount, description } = req.body;
 
-    if (!amount) return res.status(400).json({ error: "amount required" });
+    if (!amount) {
+      return res.status(400).json({ error: "amount missing" });
+    }
 
+    // PIX
     if (method === "pix") {
       const r = await fetch("https://api.mercadopago.com/v1/payments", {
         method: "POST",
@@ -34,16 +36,17 @@ app.post("/create_payment", async (req, res) => {
         },
         body: JSON.stringify({
           transaction_amount: amount,
-          description: description || "Pedido PDV Rochas Açaí",
+          description,
           payment_method_id: "pix",
-          payer: { email: "cliente@teste.com" }
+          payer: { email: "cliente@email.com" }
         })
       });
 
       return res.json(await r.json());
     }
 
-    if (method === "credit" || method === "debit") {
+    // Cartão
+    if (method === "debit" || method === "credit") {
       const r = await fetch("https://api.mercadopago.com/checkout/preferences", {
         method: "POST",
         headers: {
@@ -51,25 +54,26 @@ app.post("/create_payment", async (req, res) => {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          items: [
-            {
-              title: description || "Pedido PDV Rochas Açaí",
-              quantity: 1,
-              unit_price: amount
-            }
-          ]
+          items: [{ title: description, quantity: 1, unit_price: amount }],
+          payment_methods: {
+            excluded_payment_types: method === "debit"
+              ? [{ id: "credit_card" }]
+              : [{ id: "debit_card" }]
+          }
         })
       });
 
       return res.json(await r.json());
     }
 
-    return res.status(400).json({ error: "invalid method" });
+    res.status(400).json({ error: "Invalid payment method" });
 
   } catch (err) {
-    console.error("ERRO:", err);
-    return res.status(500).json({ error: "server error", details: err.toString() });
+    res.status(500).json({ error: err.toString() });
   }
 });
 
-app.listen(PORT, () => console.log(`🚀 Backend rodando na porta ${PORT}`));
+/* ===========================
+   INICIAR SERVIDOR
+=========================== */
+app.listen(PORT, () => console.log("🚀 Backend PDV rodando", PORT));
